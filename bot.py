@@ -27,21 +27,21 @@ async def on_ready():
     print(f'Bot is online als {bot.user}')
     await tree.sync()
 
-@bot.command()
-async def ping(ctx):
+@tree.command()
+async def ping(interaction: discord.Interaction):
     print("We spelen ping pong!")
-    await ctx.send("Pong!")
+    await interaction.response.send_message("Pong!")
 
-@bot.command()
-async def schiet(ctx):
+@tree.command()
+async def schiet(interaction: discord.Interaction):
     print("Pang!")
-    await ctx.send("Pang! :gun:")
+    await interaction.response.send_message("Pang! :gun:")
 
-@bot.command()
-async def random(ctx):
-    random_number = r.randrange(0, 10)
+@tree.command()
+async def random(interaction: discord.Interaction):
+    random_number = r.randint(1, 10)
     print(f"Het nummer is {random_number}")
-    await ctx.send(f"{random_number}!")
+    await interaction.response.send_message(f"{random_number}!")
 
 @bot.event
 async def on_message(msg):
@@ -91,6 +91,13 @@ async def say(interaction: discord.Interaction, text: str, erm_actually: Optiona
             await channel.send(f"Erm actually ☝️🤓 {text}")
         else:
             await channel.send(text)
+
+@tree.command(name="directsay", description="Zegt iets, als antwoord op jouw command.")
+@app_commands.describe(text="Wat moet de bot zeggen?")
+async def directsay(interaction: discord.Interaction, text: str):
+    print(f"Ik zeg direct: {text}")
+    await interaction.response.send_message(text)
+
 
 Vars = {}
 var_group = app_commands.Group(name="var", description="Commands met variabelen.")
