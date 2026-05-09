@@ -6,7 +6,7 @@ import dotenv
 import asyncio
 import time
 from typing import Optional
-import replit
+from pymongo import MongoClient
 import requests
 import math
 import random as r
@@ -21,6 +21,11 @@ intents.members = True
 intents.guilds = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 tree = bot.tree
+
+uri = str(os.getenv("URI"))
+client = MongoClient(uri)
+db = client.Discordbot
+home_collection = db["home"]
 
 @bot.event
 async def on_ready():
@@ -291,33 +296,32 @@ class HomeView(discord.ui.View):
         self.ogobsnames = ["couch_left", "couch_right"]
         self.couch = [4, 3]
         try:
-            self.coins = replit.db[str(interaction.user.id)]["coins"]
-            self.x = replit.db[str(interaction.user.id)]["x"]
-            self.y = replit.db[str(interaction.user.id)]["y"]
-            self.obstaclenames = list(replit.db[str(interaction.user.id)]["obstaclenames"])
-            if replit.db[str(interaction.user.id)]["day"] == math.floor(time.time() / 86400):
-                self.sat = replit.db[str(interaction.user.id)]["sat"]
+            data = home_collection.find_one({"id": str(interaction.user.id)})
+            self.coins = data["coins"]
+            self.x = data["x"]
+            self.y = data["y"]
+            self.obstaclenames = data["obstaclenames"]
+            if data["day"] == math.floor(time.time() / 86400):
+                self.sat = data["sat"]
             else:
                 self.sat = False
-                replit.db[str(interaction.user.id)]["sat"] = False
-            self.time = replit.db[str(interaction.user.id)]["time"]
+                home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"sat": False}})
+            self.time = data["time"]
         except:
-            replit.db[str(interaction.user.id)] = {}
             self.coins = 0
-            replit.db[str(interaction.user.id)]["coins"] = 0
             self.x = 5
             self.y = 2
             self.obstaclenames = ["couch_left", "couch_right"]
             self.day =  math.floor(time.time() / 86400)
-            replit.db[str(interaction.user.id)]["day"] = self.day
             self.time = None
             self.sat = False
-        replit.db[str(interaction.user.id)]["day"] = math.floor(time.time() / 86400)
+            data = {"id": str(interaction.user.id), "coins": 0, "x": 5, "y": 2, "obstaclenames": ["couch_left", "couch_right"], "day": self.day, "time": None, "sat": False}
+            home_collection.insert_one(data)
         self.canmove = False
     
     async def move(self, interaction):
         self.canmove = True
-        replit.db[str(interaction.user.id)]["coins"] = self.coins
+        data = home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": self.coins}})
         try:
             await interaction.response.defer()
         except:
@@ -365,9 +369,7 @@ class HomeView(discord.ui.View):
                     text += "<:floor:1391299382539976875>"
             text += "\n"
         await interaction.message.edit(content=text, view=self)
-        replit.db[str(interaction.user.id)]["x"] = self.x
-        replit.db[str(interaction.user.id)]["y"] = self.y
-        replit.db[str(interaction.user.id)]["time"] = self.time
+        home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"x": self.x, "y": self.y, "time": self.time}})
 
     @discord.ui.button(label=chr(8592), style=discord.ButtonStyle.primary)
     async def left(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -437,10 +439,10 @@ class HomeView(discord.ui.View):
                     self.obstaclenames[1] = "couch_right"
                     self.x = 5
                 self.sat = True
-                replit.db[str(interaction.user.id)]["sat"] = True
+                home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"sat": True}})
             if math.floor((time.time() / 120 - self.time / 120)) <= 30:
                 self.coins += math.floor((time.time() / 120 - self.time / 120))
-            replit.db[str(interaction.user.id)]["obstaclenames"] = self.obstaclenames
+            home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"obstaclenames": self.obstaclenames}})
             await self.move(interaction)
         else:
             await interaction.response.send_message("Dit huis is niet van jou!", ephemeral=True)
@@ -466,7 +468,7 @@ async def leaderboard(interaction: discord.Interaction):
         if i > 9 or i + 1 == len(members):
             go = False
         try:
-            currentmember = replit.db[str(members[i].id)]["coins"]
+            currentmember = home_collection.find_one({"id": str(members[i].id)})["coins"]
             if len(memberlist) > 1:
                 for x in range(len(memberlist)):
                     if memberlist[x] < currentmember:
