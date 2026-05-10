@@ -7,7 +7,6 @@ import asyncio
 import time
 from typing import Optional
 from pymongo import MongoClient
-import requests
 import math
 import random as r
 
@@ -76,8 +75,7 @@ async def autoreply(interaction: discord.Interaction, text: str):
                        time="Hoe lang moet het duren voordat de bot dit zegt? (in seconden)",
                        message_id="Waarop moet de bot reageren? Geef een Message ID.")
 async def say(interaction: discord.Interaction, text: str, erm_actually: Optional[bool] = False, time: Optional[int] = None, message_id: Optional[str] = None):
-    print(f"Nou, {text}")
-    await interaction.response.defer()
+    await interaction.response.send_message("Bericht komt eraan!", ephemeral=True)
     try:
         if time:
             await asyncio.sleep(time)
@@ -100,7 +98,6 @@ async def say(interaction: discord.Interaction, text: str, erm_actually: Optiona
 @tree.command(name="directsay", description="Zegt iets, als antwoord op jouw command.")
 @app_commands.describe(text="Wat moet de bot zeggen?")
 async def directsay(interaction: discord.Interaction, text: str):
-    print(f"Ik zeg direct: {text}")
     await interaction.response.send_message(text)
 
 
@@ -145,12 +142,12 @@ async def var_set(interaction: discord.Interaction, key: str):
 async def var_add(interaction: discord.Interaction, key: str, value: int):
     try:
         Vars[key] += value
-        author = interaction.user.mention
-        text = f"{author} voegde {value} toe aan {key}!"
-        await interaction.response.send_message(text)
-        await name_vars(interaction)
     except:
-        await interaction.response.send_message("Die variabele bestaat niet (meer).")
+        Vars[key] = value
+    author = interaction.user.mention
+    text = f"{author} voegde {value} toe aan {key}!"
+    await interaction.response.send_message(text)
+    await name_vars(interaction)
 @var_group.command(name="subtract", description="Trekt een getal af van je variabele.")
 @app_commands.describe(key="Wat is de key naar de variabele?", value="Hoeveel moet ervan afgetrokken worden?")
 async def var_subtract(interaction: discord.Interaction, key: str, value: int):
@@ -321,7 +318,7 @@ class HomeView(discord.ui.View):
     
     async def move(self, interaction):
         self.canmove = True
-        data = home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": self.coins}})
+        home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": self.coins}})
         try:
             await interaction.response.defer()
         except:
@@ -453,6 +450,93 @@ async def home(interaction: discord.Interaction):
     view = HomeView(interaction)
     await interaction.response.send_message("Dit is je huis! Klik op een knop om te laden.", view=view)
 
+class ShopView(discord.ui.View):
+    def __init__(self, interaction):
+        super().__init__()
+        self.user = interaction.user
+        self.check_availabilities(None)
+    
+    def check_availabilities(self, type):
+        unavailables = {}
+        day = time.time() // 86400
+        seed = r.Random(day)
+        unavailables["sugar"] = bool(seed.randint(0, 2))
+        seed = r.Random(day * 2)
+        unavailables["flour"] = bool(seed.randint(0, 2))
+        seed = r.Random(day * 3)
+        unavailables["egg"] = bool(seed.randint(0, 2))
+        for child in self.children:
+            child.disabled = unavailables[child.custom_id]
+        if type:
+            return unavailables[type]
+
+    @discord.ui.button(label="Koop suiker (🪙 10)", style=discord.ButtonStyle.primary, custom_id="sugar")
+    async def sugar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.check_availabilities("sugar"):
+            return
+        data = home_collection.find_one({"id": str(interaction.user.id)})
+        if data is not None:
+            coins = data["coins"]
+            try:
+                ingredients = data["ingredients"]
+                if "sugar" in ingredients:
+                    await interaction.response.send_message("Je hebt al suiker!", ephemeral=True)
+                    return
+            except:
+                ingredients = []
+            if coins >= 10:
+                ingredients.append("sugar")
+                home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": coins - 10, "ingredients": ingredients}})
+                await interaction.response.send_message(f"Gelukt! Je heb nu 🪙 {coins - 10}", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"Je kan dat niet betalen! Je komt 🪙 {10 - coins} tekort." ephemeral=True)
+    
+    @discord.ui.button(label="Koop bloem (🪙 15)", style=discord.ButtonStyle.primary, custom_id="flour")
+    async def flour(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.check_availabilities("flour"):
+            return
+        data = home_collection.find_one({"id": str(interaction.user.id)})
+        if data is not None:
+            coins = data["coins"]
+            try:
+                ingredients = data["ingredients"]
+                if "flour" in ingredients:
+                    await interaction.response.send_message("Je hebt al bloem!", ephemeral=True)
+                    return
+            except:
+                ingredients = []
+            if coins >= 15:
+                ingredients.append("flour")
+                home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": coins - 15, "ingredients": ingredients}})
+                await interaction.response.send_message(f"Gelukt! Je heb nu 🪙 {coins - 15}", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"Je kan dat niet betalen! Je komt 🪙 {15 - coins} tekort." ephemeral=True)
+    @discord.ui.button(label="Koop ei (🪙 5)", style=discord.ButtonStyle.primary, custom_id="egg")
+    async def egg(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.check_availabilities("egg"):
+            return
+        data = home_collection.find_one({"id": str(interaction.user.id)})
+        if data is not None:
+            coins = data["coins"]
+            try:
+                ingredients = data["ingredients"]
+                if "egg" in ingredients:
+                    await interaction.response.send_message("Je hebt al een ei!", ephemeral=True)
+                    return
+            except:
+                ingredients = []
+            if coins >= 5:
+                ingredients.append("egg")
+                home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": coins - 5, "ingredients": ingredients}})
+                await interaction.response.send_message(f"Gelukt! Je heb nu 🪙 {coins - 5}", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"Je kan dat niet betalen! Je komt 🪙 {5 - coins} tekort." ephemeral=True)
+
+@tree.command(name="shop", description="Bekijk de winkel.")
+async def shop(interaction: discord.Interaction):
+    view = ShopView(interaction)
+    await interaction.response.send_message("Shop", view=view)
+
 @tree.command(name="leaderboard", description="Bekijk de top 10 van de server")
 async def leaderboard(interaction: discord.Interaction):
     if interaction.guild is None:
@@ -495,26 +579,5 @@ async def leaderboard(interaction: discord.Interaction):
         text += f"{x}. {memberpersons[x]}: 🪙 {str(memberlist[x])} \n"
 
     await interaction.response.send_message(text)
-
-
-
-@tree.command(name="checkminecraftservers", description="Check JippieIsHere's Minecraft Servers.")
-async def mcservers(interaction: discord.Interaction):
-    print("Checking for Jippie's Minecraft Servers...")
-    try:
-        await requests.get("https://JippieIsHere-I5SW.aternos.me:46131", timeout=5)
-    except Exception as e:
-        if "protocol" not in str(e):
-            await interaction.response.send_message("**Snapshot online!**")
-        else:
-            await interaction.response.send_message("Snapshot is not online.")
-    try:
-        requests.get("https://JippieIsHere.aternos.me:18073")
-    except Exception as e:
-        channel = interaction.channel
-        if "protocol" not in str(e):
-            await channel.send("**Normal server online!**")
-        else:
-            await channel.send("Normal server is not online.")
 
 bot.run(str(os.getenv("BOT_TOKEN")))
