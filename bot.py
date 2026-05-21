@@ -31,19 +31,28 @@ async def on_ready():
     print(f'Bot is online als {bot.user}')
     await tree.sync()
 
-@tree.command()
+@tree.command(name="ping", description="Zegt Pong.")
 async def ping(interaction: discord.Interaction):
     print("We spelen ping pong!")
     await interaction.response.send_message("Pong!")
 
-@tree.command()
+@tree.command(name="schiet", description="Met een wapen")
 async def schiet(interaction: discord.Interaction):
     print("Pang!")
     await interaction.response.send_message("Pang! :gun:")
 
-@tree.command()
-async def random(interaction: discord.Interaction):
-    random_number = r.randint(1, 10)
+@tree.command(name="random", description="Geef een willekeurig getal")
+@app_commands.describe(begingetal="Vanaf welk getal zal het willekeurige getal zijn? (Inclusief)",
+                       eindgetal="Tot welk getal zal het willekeurige getal zijn? (Inclusief)")
+async def random(interaction: discord.Interaction, begingetal: Optional[int] = None, eindgetal: Optional[int] = None):
+    random_number = None
+    if begingetal == None and eindgetal == None:
+        random_number = r.randint(1, 10)
+    elif begingetal != None and eindgetal != None:
+        random_number = r.randint(begingetal, eindgetal)
+    else:
+        await interaction.response.send_message("Noem of een begingetal én een eindgetal of geen van beide!", ephemeral=True)
+        return
     print(f"Het nummer is {random_number}")
     await interaction.response.send_message(f"{random_number}!")
 
@@ -405,7 +414,7 @@ class HomeView(discord.ui.View):
     async def right(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.canmove:
             if interaction.user == self.user:
-                if self.x < 10 and [self.x + 1, self.y] not in self.obstacles:
+                if self.x < 9 and [self.x + 1, self.y] not in self.obstacles:
                     self.x += 1
                 else:
                     await interaction.response.send_message("Daar kan je niet heen.", ephemeral=True)
@@ -489,7 +498,7 @@ class ShopView(discord.ui.View):
                 home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": coins - 10, "ingredients": ingredients}})
                 await interaction.response.send_message(f"Gelukt! Je heb nu 🪙 {coins - 10}", ephemeral=True)
             else:
-                await interaction.response.send_message(f"Je kan dat niet betalen! Je komt 🪙 {10 - coins} tekort." ephemeral=True)
+                await interaction.response.send_message(f"Je kan dat niet betalen! Je komt 🪙 {10 - coins} tekort.", ephemeral=True)
     
     @discord.ui.button(label="Koop bloem (🪙 15)", style=discord.ButtonStyle.primary, custom_id="flour")
     async def flour(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -510,7 +519,7 @@ class ShopView(discord.ui.View):
                 home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": coins - 15, "ingredients": ingredients}})
                 await interaction.response.send_message(f"Gelukt! Je heb nu 🪙 {coins - 15}", ephemeral=True)
             else:
-                await interaction.response.send_message(f"Je kan dat niet betalen! Je komt 🪙 {15 - coins} tekort." ephemeral=True)
+                await interaction.response.send_message(f"Je kan dat niet betalen! Je komt 🪙 {15 - coins} tekort.", ephemeral=True)
     @discord.ui.button(label="Koop ei (🪙 5)", style=discord.ButtonStyle.primary, custom_id="egg")
     async def egg(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.check_availabilities("egg"):
@@ -530,12 +539,13 @@ class ShopView(discord.ui.View):
                 home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": coins - 5, "ingredients": ingredients}})
                 await interaction.response.send_message(f"Gelukt! Je heb nu 🪙 {coins - 5}", ephemeral=True)
             else:
-                await interaction.response.send_message(f"Je kan dat niet betalen! Je komt 🪙 {5 - coins} tekort." ephemeral=True)
+                await interaction.response.send_message(f"Je kan dat niet betalen! Je komt 🪙 {5 - coins} tekort.", ephemeral=True)
 
 @tree.command(name="shop", description="Bekijk de winkel.")
 async def shop(interaction: discord.Interaction):
     view = ShopView(interaction)
-    await interaction.response.send_message("Shop", view=view)
+    text = "### Shop\nRestock elke dag!"
+    await interaction.response.send_message(text, view=view)
 
 @tree.command(name="leaderboard", description="Bekijk de top 10 van de server")
 async def leaderboard(interaction: discord.Interaction):
