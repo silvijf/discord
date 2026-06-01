@@ -1,14 +1,16 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 import dotenv
 import asyncio
 import time
+from datetime import datetime
 from typing import Optional
 from pymongo import MongoClient
 import math
 import random as r
+from mcstatus import JavaServer
 
 dotenv.load_dotenv()
 
@@ -26,10 +28,13 @@ client = MongoClient(uri)
 db = client.Discordbot
 home_collection = db["home"]
 
+minecraft_server = str(os.getenv("MINECRAFT_SERVER"))
+
 @bot.event
 async def on_ready():
     print(f'Bot is online als {bot.user}')
     await tree.sync()
+    await getserver.start()
 
 @tree.command(name="ping", description="Zegt Pong.")
 async def ping(interaction: discord.Interaction):
@@ -55,6 +60,26 @@ async def random(interaction: discord.Interaction, begingetal: Optional[int] = N
         return
     print(f"Het nummer is {random_number}")
     await interaction.response.send_message(f"{random_number}!")
+
+@tree.command(name="janee", description="Geef willekeurig ja of nee")
+async def janee(interaction: discord.Interaction):
+    random_number = r.randint(1, 100)
+    text = ""
+    if random_number <= 15:
+        text = "Ja!"
+    elif random_number <= 30:
+        text = "Nee!"
+    elif random_number <= 45:
+        text = "Jazeker!"
+    elif random_number <= 60:
+        text = "Nee, zeker niet!"
+    elif random_number <= 75:
+        text = "Oui :french_bread:"
+    elif random_number <= 90:
+        text = "Non :croissant:"
+    else:
+        text = "Weet ik veel kies jij maar"
+    await interaction.response.send_message(text)
 
 @bot.event
 async def on_message(msg):
@@ -82,8 +107,8 @@ async def autoreply(interaction: discord.Interaction, text: str):
 @app_commands.describe(text="Wat moet de bot zeggen?",
                        erm_actually='Moet de bot "Erm actually ☝️🤓" zeggen?',
                        time="Hoe lang moet het duren voordat de bot dit zegt? (in seconden)",
-                       message_id="Waarop moet de bot reageren? Geef een Message ID.")
-async def say(interaction: discord.Interaction, text: str, erm_actually: Optional[bool] = False, time: Optional[int] = None, message_id: Optional[str] = None):
+                       message_link="Waarop moet de bot reageren? Geef een link naar de message.")
+async def say(interaction: discord.Interaction, text: str, erm_actually: Optional[bool] = False, time: Optional[int] = None, message_link: Optional[str] = None):
     await interaction.response.send_message("Bericht komt eraan!", ephemeral=True)
     try:
         if time:
@@ -91,13 +116,14 @@ async def say(interaction: discord.Interaction, text: str, erm_actually: Optiona
     except:
         pass
     channel = interaction.channel
-    if message_id:
-        try:
-            message_id = message_id.split("-")[1]
-        except:
-            pass
-        msg = await channel.fetch_message(int(message_id))
-        await msg.reply(text)
+    if message_link:
+        if "/" in message_link:
+            message_link = message_link.rsplit("/", 1)[1]
+        msg = await channel.fetch_message(int(message_link))
+        if erm_actually:
+            await msg.reply((f"Erm actually ☝️🤓 {text}"))
+        else:
+            await msg.reply(text)
     else:
         if erm_actually:
             await channel.send(f"Erm actually ☝️🤓 {text}")
@@ -118,15 +144,9 @@ async def name_vars(interaction):
     if Vars:
         for i in range(len(Vars)):
             text += f"**{list(Vars.keys())[i]}**: {list(Vars.values())[i]}\n"
-        try:
-            await interaction.response.send_message(text)
-        except:
-            await interaction.channel.send(text)
+        await interaction.response.send_message(text)
     else:
-        try:
-            await interaction.response.send_message("Geen variabelen.")
-        except:
-            await interaction.channel.send("Geen variabelen.")
+        await interaction.response.send_message("Geen variabelen.")
 
 @var_group.command(name="set", description="Onthoudt een getal.")
 @app_commands.describe(key="Wat moet de key zijn naar de variabele?", value="Wat moet de value zijn?")
@@ -327,7 +347,6 @@ class HomeView(discord.ui.View):
     
     async def move(self, interaction):
         self.canmove = True
-        home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"coins": self.coins}})
         try:
             await interaction.response.defer()
         except:
@@ -445,10 +464,11 @@ class HomeView(discord.ui.View):
                     self.obstaclenames[1] = "couch_right"
                     self.x = 5
                 self.sat = True
-                home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"sat": True}})
-            if math.floor((time.time() / 120 - self.time / 120)) <= 30:
-                self.coins += math.floor((time.time() / 120 - self.time / 120))
-            home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"obstaclenames": self.obstaclenames}})
+                self.day = math.floor(time.time() / 86400)
+                home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"sat": True, "day": self.day}})
+                if math.floor((time.time() / 120 - self.time / 120)) <= 30:
+                    self.coins += math.floor((time.time() / 120 - self.time / 120))
+            home_collection.find_one_and_update({"id": str(interaction.user.id)}, {"$set": {"obstaclenames": self.obstaclenames, "coins": self.coins}})
             await self.move(interaction)
         else:
             await interaction.response.send_message("Dit huis is niet van jou!", ephemeral=True)
@@ -568,18 +588,18 @@ async def leaderboard(interaction: discord.Interaction):
                     if memberlist[x] < currentmember:
                         continue
                     memberlist.insert(x + 1, currentmember)
-                    memberpersons.insert(x + 1, members[i].mention)
+                    memberpersons.insert(x + 1, members[i].display_name)
                     break
             elif len(memberlist) == 1:
                 if memberlist[0] > currentmember:
                     memberlist.insert(1, currentmember)
-                    memberpersons.insert(1, members[i].mention)
+                    memberpersons.insert(1, members[i].display_name)
                 else:
                     memberlist.insert(0, currentmember)
-                    memberpersons.insert(0, members[i].mention)
+                    memberpersons.insert(0, members[i].display_name)
             else:
                 memberlist = [currentmember]
-                memberpersons = [members[i].mention]
+                memberpersons = [members[i].display_name]
         except:
             pass
             
@@ -589,5 +609,19 @@ async def leaderboard(interaction: discord.Interaction):
         text += f"{x}. {memberpersons[x]}: 🪙 {str(memberlist[x])} \n"
 
     await interaction.response.send_message(text)
+
+@tasks.loop(seconds=20)
+async def getserver():
+    server = JavaServer.lookup(minecraft_server)
+    minecraft_channel = bot.get_channel(1510225841756569680)
+    minecraft_message = await minecraft_channel.fetch_message(1510534681987387433)
+    readable_time = datetime.now().strftime("%d-%m %H:%M:%S")
+    try:
+        status = server.status()
+        message = f"Online players: {status.players.online}\n-# Laatst gesynchroniseerd: {readable_time}"
+        await minecraft_message.edit(content=message)
+    except:
+        message = f"Server is offline.\n-# Laatst gesynchroniseerd: {readable_time}"
+        await minecraft_message.edit(content=message)
 
 bot.run(str(os.getenv("BOT_TOKEN")))
